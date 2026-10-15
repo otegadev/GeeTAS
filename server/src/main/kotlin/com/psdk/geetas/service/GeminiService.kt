@@ -3,7 +3,14 @@ package com.psdk.geetas.service
 import com.google.genai.kotlin.Client
 import com.google.genai.kotlin.types.Blob
 import com.google.genai.kotlin.types.Content
+import com.google.genai.kotlin.types.GenerateContentConfig
+import com.google.genai.kotlin.types.GenerationConfig
 import com.google.genai.kotlin.types.Part
+import com.google.genai.kotlin.types.PrebuiltVoiceConfig
+import com.google.genai.kotlin.types.ReplicatedVoiceConfig
+import com.google.genai.kotlin.types.SpeechConfig
+import com.google.genai.kotlin.types.SpeechMetadata
+import com.google.genai.kotlin.types.VoiceConfig
 import com.psdk.geetas.model.SttRequest
 import com.psdk.geetas.model.SttResponse
 import com.psdk.geetas.model.TtsRequest
@@ -38,17 +45,25 @@ class GeminiService {
         val client = getClient()
         val modelToUse = request.model?.takeIf { it.isNotBlank() } ?: DEFAULT_TTS_MODEL
 
-        val prompt = if (!request.voice.isNullOrBlank()) {
-            "Synthesize speech for the following text using voice '${request.voice}':\n${request.text}"
-        } else {
-            request.text
-        }
-
+        val prompt = request.text
         val content = Content.fromText(prompt)
+        val speechMetadata = Content(
+            parts = listOf(Part(speechMetadata = SpeechMetadata(
+                style = request.style
+            )))
+        )
+        val generationConfig =
+            GenerateContentConfig(speechConfig = SpeechConfig(
+                voiceConfig = VoiceConfig(prebuiltVoiceConfig = PrebuiltVoiceConfig(
+                 voiceName = request.voice
+                )
+                )
+            ))
 
         val response = client.models.generateContent(
             model = modelToUse,
-            contents = listOf(content)
+            contents = listOf(content,speechMetadata),
+            config = generationConfig
         )
 
         var audioBase64: String? = null

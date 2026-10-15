@@ -1,11 +1,13 @@
 package com.psdk.geetas.model
 
 import kotlinx.serialization.Serializable
+import javax.swing.text.Style
 
 @Serializable
 data class TtsRequest(
     val text: String,
     val model: String? = null,
+    val style: String? = null,
     val voice: String? = null
 )
 
