@@ -4,10 +4,11 @@ import com.google.genai.kotlin.Client
 import com.google.genai.kotlin.types.Blob
 import com.google.genai.kotlin.types.Content
 import com.google.genai.kotlin.types.GenerateContentConfig
-import com.google.genai.kotlin.types.GenerationConfig
+import com.google.genai.kotlin.types.MultiSpeakerVoiceConfig
 import com.google.genai.kotlin.types.Part
 import com.google.genai.kotlin.types.PrebuiltVoiceConfig
 import com.google.genai.kotlin.types.ReplicatedVoiceConfig
+import com.google.genai.kotlin.types.SpeakerVoiceConfig
 import com.google.genai.kotlin.types.SpeechConfig
 import com.google.genai.kotlin.types.SpeechMetadata
 import com.google.genai.kotlin.types.VoiceConfig
@@ -41,7 +42,7 @@ class GeminiService {
         return Client(apiKey = key)
     }
 
-    suspend fun generateSpeech(request: TtsRequest): TtsResponse {
+    suspend fun generateSingleSpeakerSpeech(request: TtsRequest): TtsResponse {
         val client = getClient()
         val modelToUse = request.model?.takeIf { it.isNotBlank() } ?: DEFAULT_TTS_MODEL
 
@@ -53,11 +54,13 @@ class GeminiService {
             )))
         )
         val generationConfig =
-            GenerateContentConfig(speechConfig = SpeechConfig(
+            GenerateContentConfig(
+                speechConfig = SpeechConfig(
                 voiceConfig = VoiceConfig(prebuiltVoiceConfig = PrebuiltVoiceConfig(
                  voiceName = request.voice
                 )
-                )
+                ),
+                    languageCode = request.languageCode
             ))
 
         val response = client.models.generateContent(
@@ -67,12 +70,12 @@ class GeminiService {
         )
 
         var audioBase64: String? = null
-        var returnedMimeType: String? = "audio/mp3"
+        var returnedMimeType: String? = "audio/wav"
 
         response.candidates?.firstOrNull()?.content?.parts?.forEach { part ->
             part.inlineData?.data?.let { bytes ->
                 audioBase64 = Base64.getEncoder().encodeToString(bytes)
-                returnedMimeType = part.inlineData?.mimeType ?: "audio/mp3"
+                returnedMimeType = part.inlineData?.mimeType ?: "audio/wav"
             }
         }
 
@@ -84,6 +87,90 @@ class GeminiService {
         )
     }
 
+    suspend fun generateMultiSpeakerSpeech(request: List<TtsRequest>): TtsResponse {
+        val client = getClient()
+        val modelToUse = DEFAULT_TTS_MODEL
+
+        val speechMetadata = createMultiSpeechMetaDataParts(request)
+        val speakerVoiceConfigs = createMultiSpeechConfig(request)
+
+        val speechData = Content(
+            parts = speechMetadata
+        )
+        val generateContentConfig = GenerateContentConfig(
+            speechConfig = SpeechConfig(
+                multiSpeakerVoiceConfig = MultiSpeakerVoiceConfig(
+                    speakerVoiceConfigs = speakerVoiceConfigs
+                )
+            )
+        )
+
+        val response = client.models.generateContent(
+            model = modelToUse,
+            contents = listOf(speechData),
+            config = generateContentConfig
+        )
+
+        var audioBase64: String? = null
+        var returnedMimeType: String? = "audio/wav"
+
+        response.candidates?.firstOrNull()?.content?.parts?.forEach { part ->
+            part.inlineData?.data?.let { bytes ->
+                audioBase64 = Base64.getEncoder().encodeToString(bytes)
+                returnedMimeType = part.inlineData?.mimeType
+            }
+        }
+
+        return TtsResponse(
+            text = response.text,
+            audioBase64 = audioBase64,
+            mimeType = returnedMimeType,
+            modelUsed = modelToUse
+        )
+    }
+
+    private fun createMultiSpeechMetaDataParts(
+        list: List<TtsRequest>
+    ): List<Part>? {
+        val partList: MutableList<Part>? = mutableListOf()
+
+        list.forEach {
+            partList?.add(
+                Part(
+                    text = it.text
+                )
+            )
+            partList?.add(
+                Part(
+                    speechMetadata = SpeechMetadata (
+                        speaker = it.speaker,
+                        style = it.voice
+                    )
+                )
+            )
+        }
+        return partList?.toList()
+    }
+
+    private fun createMultiSpeechConfig(
+        list: List<TtsRequest>
+    ): List<SpeakerVoiceConfig>? {
+        val configList: MutableList<SpeakerVoiceConfig>? = mutableListOf()
+
+        list.forEach {
+            configList?.add(
+                SpeakerVoiceConfig(
+                    speaker = it.speaker,
+                    voiceConfig = VoiceConfig(
+                        prebuiltVoiceConfig = PrebuiltVoiceConfig(
+                            voiceName = it.voice
+                        )
+                    )
+                )
+            )
+        }
+        return configList?.toList()
+    }
     suspend fun transcribeSpeech(request: SttRequest): SttResponse {
         val client = getClient()
         val modelToUse = request.model?.takeIf { it.isNotBlank() } ?: DEFAULT_STT_MODEL
@@ -124,3 +211,4 @@ class GeminiService {
         )
     }
 }
+

@@ -73,7 +73,7 @@ fun Application.module() {
                         return@post
                     }
 
-                    val response = geminiService.generateSpeech(request)
+                    val response = geminiService.generateSingleSpeakerSpeech(request)
                     call.respond(response)
                 } catch (e: IllegalStateException) {
                     call.respond(
